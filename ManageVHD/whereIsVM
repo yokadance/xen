@@ -1,0 +1,58 @@
+
+Connect-XenServer -Url https://xxx.xxx.xxx.xxx  
+
+#get all pdbs linked pointing to iscsi datastores
+$colpbd = Get-Xenpbd | where {$_.device_config.provider -like "iscsi"}
+ 
+$reports = @()
+foreach ($pbd in $colpbd){
+	#get all SRs pointing to iscsi pbds
+	$colsr = Get-XenSR -opaque_ref $pbd.SR.opaque_ref
+	
+	foreach ($sr in $colsr) {
+		#get all VDIs on SR
+		$colvdi = Get-XenVDI | where { $_.SR.opaque_ref -like $sr.opaque_ref}
+ 
+		foreach ($vdi in $colvdi){
+            #get vbd
+            $colvbd = Get-XenVBD | where { $_.VDI.opaque_ref -like $vdi.opaque_ref}
+ 
+            foreach ($vbd in $colvbd){
+                #Show VM VDI Path
+                $vm = Get-XenVM -Ref $vbd.vm.opaque_ref
+            
+     $report = "" | Select vm_name_label, power_state, vdi_name_label, sr_name_label
+     $report.vm_name_label            = $vm.name_label
+     $report.power_state              = $vm.power_state
+     $report.vdi_name_label           = $vdi.name_label
+     $report.sr_name_label            = $sr.name_label
+     $reports += $report
+
+            }
+		}
+	}
+}
+#sort by  vm_name_label
+$reportall = $reports | sort  vm_name_label
+
+#create a list with unique vm_name_label for counting.
+$reports = $reports | sort vm_name_label | select -Unique vm_name_label,power_state, vdi_name_label, sr_name_label
+
+$sr_counts = @()
+$sr_uniqe = ($reports.sr_name_label | select -Unique | sort )
+foreach ($sr_name_label in $sr_uniqe) {
+
+$sr_count = "" | Select sr_name_label, count
+$sr_count.sr_name_label    = $sr_name_label
+$sr_count.count            = ($reports.sr_name_label | where {$_ -like $sr_name_label}).count
+$sr_counts += $sr_count
+
+}
+
+#write all vm's and disk to screen
+$reportall 
+
+#write all sr and the number of vm's of each to screen
+$sr_counts
+
+Disconnect-XenServer
